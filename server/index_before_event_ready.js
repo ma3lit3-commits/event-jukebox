@@ -2,7 +2,6 @@ const express = require("express");
 const http = require("http");
 const cors = require("cors");
 const path = require("path");
-const fs = require("fs");
 const multer = require("multer");
 const { Server } = require("socket.io");
 const db = require("./db");
@@ -17,36 +16,6 @@ const io = new Server(server, {
 });
 
 const songsDir = path.join(__dirname, "../client/public/songs");
-const settingsFile = path.join(__dirname, "settings.json");
-
-const defaultSettings = {
-  queueLimit: 20,
-  cooldownSeconds: 30,
-  eventName: "EFFEKTE.CH PLAY",
-  claim: "IT’S YOUR SHOW."
-};
-
-function getSettings() {
-  try {
-    if (!fs.existsSync(settingsFile)) {
-      fs.writeFileSync(settingsFile, JSON.stringify(defaultSettings, null, 2));
-      return defaultSettings;
-    }
-
-    return {
-      ...defaultSettings,
-      ...JSON.parse(fs.readFileSync(settingsFile, "utf8"))
-    };
-  } catch {
-    return defaultSettings;
-  }
-}
-
-function saveSettings(settings) {
-  fs.writeFileSync(settingsFile, JSON.stringify(settings, null, 2));
-}
-
-const userCooldowns = new Map();
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
@@ -62,6 +31,7 @@ const upload = multer({ storage });
 
 app.use(cors());
 app.use(express.json());
+
 app.use("/songs", express.static(songsDir));
 
 function emitQueue() {
@@ -78,28 +48,6 @@ function emitQueue() {
     }
   );
 }
-
-app.get("/api/settings", (req, res) => {
-  res.json(getSettings());
-});
-
-app.post("/api/admin/settings", (req, res) => {
-  if (req.query.key !== ADMIN_KEY) {
-    return res.status(403).json({ error: "Nicht erlaubt" });
-  }
-
-  const current = getSettings();
-
-  const next = {
-    queueLimit: Number(req.body.queueLimit || current.queueLimit),
-    cooldownSeconds: Number(req.body.cooldownSeconds || current.cooldownSeconds),
-    eventName: req.body.eventName || current.eventName,
-    claim: req.body.claim || current.claim
-  };
-
-  saveSettings(next);
-  res.json({ success: true, settings: next });
-});
 
 app.get("/api/songs", (req, res) => {
   db.all("SELECT * FROM songs WHERE active = 1 ORDER BY id DESC", (err, rows) => {
@@ -124,22 +72,12 @@ app.get("/api/queue", (req, res) => {
 
 app.post("/api/queue", (req, res) => {
   const { songId } = req.body;
-  const settings = getSettings();
-  const userKey = req.ip;
-  const now = Date.now();
 
   if (!songId) {
     return res.status(400).json({ error: "songId fehlt" });
   }
 
-  const lastRequest = userCooldowns.get(userKey);
-
-  if (lastRequest && now - lastRequest < settings.cooldownSeconds * 1000) {
-    return res.status(400).json({
-      error: `Bitte warte ${settings.cooldownSeconds} Sekunden zwischen Requests.`
-    });
-  }
-
+  // Queue-Limit
   db.get(
     `
     SELECT COUNT(*) as count
@@ -147,10 +85,11 @@ app.post("/api/queue", (req, res) => {
     WHERE status IN ('queued','playing')
     `,
     (err, row) => {
-      if (row && row.count >= settings.queueLimit) {
+      if (row && row.count >= 20) {
         return res.status(400).json({ error: "Die Warteschlange ist aktuell voll." });
       }
 
+      // Duplicate-Check
       db.get(
         `
         SELECT * FROM queue 
@@ -160,14 +99,14 @@ app.post("/api/queue", (req, res) => {
         [songId],
         (err, existing) => {
           if (existing) {
-            return res.status(400).json({ error: "Song ist bereits in der Warteschlange." });
+            return res.status(400).json({ error: "Song ist bereits in der Warteschlange" });
           }
 
+          // Insert
           db.run(
             "INSERT INTO queue (song_id) VALUES (?)",
             [songId],
             () => {
-              userCooldowns.set(userKey, now);
               emitQueue();
               res.json({ success: true });
             }
@@ -193,7 +132,9 @@ app.post("/api/admin/start-next", (req, res) => {
     LIMIT 1
     `,
     (err, playing) => {
-      if (playing) return res.json(playing);
+      if (playing) {
+        return res.json(playing);
+      }
 
       db.get(
         `
@@ -205,7 +146,9 @@ app.post("/api/admin/start-next", (req, res) => {
         LIMIT 1
         `,
         (err, next) => {
-          if (!next) return res.json(null);
+          if (!next) {
+            return res.json(null);
+          }
 
           db.run("UPDATE queue SET status = 'playing' WHERE id = ?", [next.queueId], () => {
             emitQueue();
@@ -271,25 +214,6 @@ app.get("/api/admin/clear", (req, res) => {
   );
 });
 
-app.post("/api/admin/reset", (req, res) => {
-  if (req.query.key !== ADMIN_KEY) {
-    return res.status(403).json({ error: "Nicht erlaubt" });
-  }
-
-  db.run(
-    `
-    UPDATE queue
-    SET status = 'skipped'
-    WHERE status IN ('queued', 'playing')
-    `,
-    () => {
-      userCooldowns.clear();
-      emitQueue();
-      res.json({ success: true });
-    }
-  );
-});
-
 app.post("/api/admin/add-song", upload.single("file"), (req, res) => {
   if (req.query.key !== ADMIN_KEY) {
     return res.status(403).json({ error: "Nicht erlaubt" });
@@ -324,10 +248,12 @@ app.post("/api/admin/delete-song/:id", (req, res) => {
     return res.status(403).json({ error: "Nicht erlaubt" });
   }
 
+  const songId = req.params.id;
+
   db.run(
     "UPDATE songs SET active = 0 WHERE id = ?",
-    [req.params.id],
-    err => {
+    [songId],
+    function (err) {
       if (err) {
         return res.status(500).json({ error: "DB Fehler" });
       }
