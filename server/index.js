@@ -148,6 +148,30 @@ io.on("connection", () => {
   emitQueue();
 });
 
+app.post("/api/admin/add-song", (req, res) => {
+  if (req.query.key !== "demo123") {
+    return res.status(403).json({ error: "Nicht erlaubt" });
+  }
+
+  const { title, artist, filename } = req.body;
+
+  if (!title || !artist || !filename) {
+    return res.status(400).json({ error: "Fehlende Daten" });
+  }
+
+  db.run(
+    "INSERT INTO songs (title, artist, filename) VALUES (?, ?, ?)",
+    [title, artist, filename],
+    function (err) {
+      if (err) {
+        return res.status(500).json({ error: "DB Fehler" });
+      }
+
+      res.json({ success: true, id: this.lastID });
+    }
+  );
+});
+
 server.listen(3001, "0.0.0.0", () => {
   console.log("Server läuft auf http://localhost:3001");
 });

@@ -7,6 +7,10 @@ const ADMIN_KEY = "demo123";
 export default function Admin() {
   const [queue, setQueue] = useState([]);
   const [current, setCurrent] = useState(null);
+  const [title, setTitle] = useState("");
+  const [artist, setArtist] = useState("");
+  const [filename, setFilename] = useState("");
+  const [message, setMessage] = useState("");
   const audioRef = useRef(null);
 
   useEffect(() => {
@@ -61,33 +65,273 @@ export default function Admin() {
     await fetch(`${API}/api/admin/clear?key=${ADMIN_KEY}`);
   }
 
+  async function addSong(e) {
+    e.preventDefault();
+    setMessage("");
+
+    const res = await fetch(`${API}/api/admin/add-song?key=${ADMIN_KEY}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title, artist, filename })
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      setMessage(data.error || "Fehler beim Hinzufügen");
+      return;
+    }
+
+    setTitle("");
+    setArtist("");
+    setFilename("");
+    setMessage("Song wurde hinzugefügt.");
+  }
+
   return (
-    <main style={{ padding: 20, fontFamily: "Arial" }}>
-      <h1>Jukebox Admin</h1>
+    <main style={styles.page}>
+      <section style={styles.header}>
+        <p style={styles.kicker}>CONTROL PANEL</p>
+        <h1 style={styles.title}>EFFEKTE.CH PLAY</h1>
+        <p style={styles.subtitle}>Admin für Playback, Queue und Songdatenbank</p>
+      </section>
 
-      <audio ref={audioRef} controls onEnded={finishAndNext} />
+      <section style={styles.grid}>
+        <div style={styles.card}>
+          <h2 style={styles.cardTitle}>Playback</h2>
 
-      <h2>Aktuell</h2>
-      {current ? (
-        <p><strong>{current.artist} – {current.title}</strong></p>
-      ) : (
-        <p>Kein Song läuft.</p>
-      )}
+          <audio ref={audioRef} controls onEnded={finishAndNext} style={styles.audio} />
 
-      <div style={{ display: "flex", gap: 10, marginBottom: 20 }}>
-        <button onClick={startNext}>Start Playback</button>
-        <button onClick={skip}>Skip</button>
-        <button onClick={clearQueue}>Queue leeren</button>
-      </div>
+          <div style={styles.nowBox}>
+            <span style={styles.label}>Aktuell</span>
+            <strong style={styles.nowText}>
+              {current ? `${current.artist} – ${current.title}` : "Kein Song läuft"}
+            </strong>
+          </div>
 
-      <h2>Queue</h2>
-      {queue.length === 0 && <p>Queue ist leer.</p>}
-
-      {queue.map((item, index) => (
-        <div key={item.queueId}>
-          {index + 1}. {item.artist} – {item.title} [{item.status}]
+          <div style={styles.row}>
+            <button style={styles.button} onClick={startNext}>Start Playback</button>
+            <button style={styles.buttonSecondary} onClick={skip}>Skip</button>
+            <button style={styles.dangerButton} onClick={clearQueue}>Queue leeren</button>
+          </div>
         </div>
-      ))}
+
+        <div style={styles.card}>
+          <h2 style={styles.cardTitle}>Song hinzufügen</h2>
+
+          <form onSubmit={addSong} style={styles.form}>
+            <input
+              style={styles.input}
+              placeholder="Titel"
+              value={title}
+              onChange={e => setTitle(e.target.value)}
+            />
+
+            <input
+              style={styles.input}
+              placeholder="Artist"
+              value={artist}
+              onChange={e => setArtist(e.target.value)}
+            />
+
+            <input
+              style={styles.input}
+              placeholder="Dateiname z.B. song4.mp3"
+              value={filename}
+              onChange={e => setFilename(e.target.value)}
+            />
+
+            <button style={styles.button} type="submit">
+              Song speichern
+            </button>
+          </form>
+
+          {message && <p style={styles.message}>{message}</p>}
+
+          <p style={styles.hint}>
+            MP3-Datei muss im Ordner <strong>client/public/songs</strong> liegen.
+          </p>
+        </div>
+      </section>
+
+      <section style={styles.card}>
+        <div style={styles.queueHeader}>
+          <h2 style={styles.cardTitle}>Queue</h2>
+          <span style={styles.badge}>{queue.length}</span>
+        </div>
+
+        {queue.length === 0 && <p style={styles.empty}>Queue ist leer.</p>}
+
+        {queue.map((item, index) => (
+          <div key={item.queueId} style={styles.queueItem}>
+            <span style={styles.queueNumber}>{String(index + 1).padStart(2, "0")}</span>
+            <span>{item.artist} – {item.title}</span>
+            <span style={styles.status}>{item.status}</span>
+          </div>
+        ))}
+      </section>
     </main>
   );
 }
+
+const styles = {
+  page: {
+    minHeight: "100vh",
+    background:
+      "radial-gradient(circle at top center, rgba(255,204,0,0.18), transparent 32%), #000",
+    color: "#fff",
+    fontFamily: "Arial, sans-serif",
+    padding: 28,
+    boxSizing: "border-box"
+  },
+  header: {
+    marginBottom: 26
+  },
+  kicker: {
+    color: "#ffcc00",
+    letterSpacing: 4,
+    fontSize: 12,
+    fontWeight: 900,
+    margin: 0
+  },
+  title: {
+    color: "#ffcc00",
+    fontSize: 52,
+    fontStyle: "italic",
+    fontWeight: 1000,
+    margin: "8px 0",
+    textShadow: "0 0 28px rgba(255,204,0,0.35)"
+  },
+  subtitle: {
+    color: "#ccc",
+    margin: 0
+  },
+  grid: {
+    display: "grid",
+    gridTemplateColumns: "1fr 1fr",
+    gap: 18,
+    marginBottom: 18
+  },
+  card: {
+    background: "rgba(14,14,14,0.95)",
+    border: "1px solid rgba(255,204,0,0.22)",
+    borderRadius: 22,
+    padding: 22,
+    boxShadow: "0 0 34px rgba(255,204,0,0.06)"
+  },
+  cardTitle: {
+    color: "#fff",
+    marginTop: 0,
+    marginBottom: 16,
+    fontSize: 24
+  },
+  audio: {
+    width: "100%",
+    marginBottom: 16
+  },
+  nowBox: {
+    background: "#ffcc00",
+    color: "#000",
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 16
+  },
+  label: {
+    display: "block",
+    fontSize: 11,
+    letterSpacing: 2,
+    fontWeight: 900,
+    textTransform: "uppercase",
+    marginBottom: 6
+  },
+  nowText: {
+    fontSize: 20
+  },
+  row: {
+    display: "flex",
+    gap: 10,
+    flexWrap: "wrap"
+  },
+  form: {
+    display: "grid",
+    gap: 12
+  },
+  input: {
+    background: "#050505",
+    border: "1px solid rgba(255,204,0,0.45)",
+    borderRadius: 14,
+    padding: "13px 14px",
+    color: "#fff",
+    fontSize: 16,
+    outline: "none",
+    boxSizing: "border-box"
+  },
+  button: {
+    background: "#ffcc00",
+    color: "#000",
+    border: "none",
+    borderRadius: 14,
+    padding: "13px 16px",
+    fontWeight: 900,
+    cursor: "pointer"
+  },
+  buttonSecondary: {
+    background: "#222",
+    color: "#fff",
+    border: "1px solid #444",
+    borderRadius: 14,
+    padding: "13px 16px",
+    fontWeight: 900,
+    cursor: "pointer"
+  },
+  dangerButton: {
+    background: "#2a0808",
+    color: "#fff",
+    border: "1px solid #6b1b1b",
+    borderRadius: 14,
+    padding: "13px 16px",
+    fontWeight: 900,
+    cursor: "pointer"
+  },
+  message: {
+    background: "rgba(255,204,0,0.15)",
+    border: "1px solid rgba(255,204,0,0.35)",
+    color: "#fff",
+    padding: 12,
+    borderRadius: 14
+  },
+  hint: {
+    color: "#aaa",
+    fontSize: 13
+  },
+  queueHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center"
+  },
+  badge: {
+    background: "#ffcc00",
+    color: "#000",
+    padding: "5px 12px",
+    borderRadius: 999,
+    fontWeight: 900
+  },
+  empty: {
+    color: "#aaa"
+  },
+  queueItem: {
+    display: "grid",
+    gridTemplateColumns: "50px 1fr 90px",
+    gap: 12,
+    padding: "13px 0",
+    borderBottom: "1px solid rgba(255,255,255,0.08)"
+  },
+  queueNumber: {
+    color: "#ffcc00",
+    fontWeight: 1000
+  },
+  status: {
+    color: "#888",
+    textAlign: "right"
+  }
+};
