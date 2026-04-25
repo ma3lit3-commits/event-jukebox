@@ -10,6 +10,7 @@ export default function Admin() {
   const [title, setTitle] = useState("");
   const [artist, setArtist] = useState("");
   const [filename, setFilename] = useState("");
+const [file, setFile] = useState(null);
   const [message, setMessage] = useState("");
   const audioRef = useRef(null);
 
@@ -65,29 +66,37 @@ export default function Admin() {
     await fetch(`${API}/api/admin/clear?key=${ADMIN_KEY}`);
   }
 
-  async function addSong(e) {
-    e.preventDefault();
-    setMessage("");
+async function addSong(e) {
+  e.preventDefault();
+  setMessage("");
 
-    const res = await fetch(`${API}/api/admin/add-song?key=${ADMIN_KEY}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title, artist, filename })
-    });
-
-    const data = await res.json();
-
-    if (!res.ok) {
-      setMessage(data.error || "Fehler beim Hinzufügen");
-      return;
-    }
-
-    setTitle("");
-    setArtist("");
-    setFilename("");
-    setMessage("Song wurde hinzugefügt.");
+  if (!title || !artist || !file) {
+    setMessage("Bitte alles ausfüllen + Datei wählen.");
+    return;
   }
 
+  const formData = new FormData();
+  formData.append("title", title);
+  formData.append("artist", artist);
+  formData.append("file", file);
+
+  const res = await fetch(`${API}/api/admin/add-song?key=${ADMIN_KEY}`, {
+    method: "POST",
+    body: formData
+  });
+
+  const data = await res.json();
+
+  if (!res.ok) {
+    setMessage(data.error || "Fehler");
+    return;
+  }
+
+  setTitle("");
+  setArtist("");
+  setFile(null);
+  setMessage("Upload erfolgreich");
+}
   return (
     <main style={styles.page}>
       <section style={styles.header}>
@@ -134,12 +143,12 @@ export default function Admin() {
               onChange={e => setArtist(e.target.value)}
             />
 
-            <input
-              style={styles.input}
-              placeholder="Dateiname z.B. song4.mp3"
-              value={filename}
-              onChange={e => setFilename(e.target.value)}
-            />
+ <input
+  style={styles.input}
+  type="file"
+  accept="audio/mpeg"
+  onChange={(e) => setFile(e.target.files[0])}
+/>
 
             <button style={styles.button} type="submit">
               Song speichern

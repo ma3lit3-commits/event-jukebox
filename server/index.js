@@ -2,6 +2,7 @@ const express = require("express");
 const http = require("http");
 const cors = require("cors");
 const path = require("path");
+const multer = require("multer");
 const { Server } = require("socket.io");
 const db = require("./db");
 
@@ -14,39 +15,59 @@ const io = new Server(server, {
   cors: { origin: "*" }
 });
 
+const songsDir = path.join(__dirname, "../client/public/songs");
+
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, songsDir);
+  },
+  filename: (req, file, cb) => {
+    const safeName = file.originalname.replace(/[^a-zA-Z0-9.-]/g, "_");
+    cb(null, Date.now() + "-" + safeName);
+  }
+});
+
+const upload = multer({ storage });
+
 app.use(cors());
 app.use(express.json());
 
-app.use("/songs", express.static(path.join(__dirname, "../client/public/songs")));
+app.use("/songs", express.static(songsDir));
 
 function emitQueue() {
-  db.all(`
+  db.all(
+    `
     SELECT queue.id as queueId, queue.status, songs.*
     FROM queue
     JOIN songs ON queue.song_id = songs.id
     WHERE queue.status IN ('queued', 'playing')
     ORDER BY queue.id ASC
-  `, (err, rows) => {
-    io.emit("queue:update", rows || []);
-  });
+    `,
+    (err, rows) => {
+      io.emit("queue:update", rows || []);
+    }
+  );
 }
 
 app.get("/api/songs", (req, res) => {
-  db.all("SELECT * FROM songs WHERE active = 1", (err, rows) => {
+  db.all("SELECT * FROM songs WHERE active = 1 ORDER BY id DESC", (err, rows) => {
     res.json(rows || []);
   });
 });
 
 app.get("/api/queue", (req, res) => {
-  db.all(`
+  db.all(
+    `
     SELECT queue.id as queueId, queue.status, songs.*
     FROM queue
     JOIN songs ON queue.song_id = songs.id
     WHERE queue.status IN ('queued', 'playing')
     ORDER BY queue.id ASC
-  `, (err, rows) => {
-    res.json(rows || []);
-  });
+    `,
+    (err, rows) => {
+      res.json(rows || []);
+    }
+  );
 });
 
 app.post("/api/queue", (req, res) => {
@@ -67,36 +88,42 @@ app.post("/api/admin/start-next", (req, res) => {
     return res.status(403).json({ error: "Nicht erlaubt" });
   }
 
-  db.get(`
+  db.get(
+    `
     SELECT queue.id as queueId, songs.*
     FROM queue
     JOIN songs ON queue.song_id = songs.id
     WHERE queue.status = 'playing'
     ORDER BY queue.id ASC
     LIMIT 1
-  `, (err, playing) => {
-    if (playing) {
-      return res.json(playing);
-    }
-
-    db.get(`
-      SELECT queue.id as queueId, songs.*
-      FROM queue
-      JOIN songs ON queue.song_id = songs.id
-      WHERE queue.status = 'queued'
-      ORDER BY queue.id ASC
-      LIMIT 1
-    `, (err, next) => {
-      if (!next) {
-        return res.json(null);
+    `,
+    (err, playing) => {
+      if (playing) {
+        return res.json(playing);
       }
 
-      db.run("UPDATE queue SET status = 'playing' WHERE id = ?", [next.queueId], () => {
-        emitQueue();
-        res.json(next);
-      });
-    });
-  });
+      db.get(
+        `
+        SELECT queue.id as queueId, songs.*
+        FROM queue
+        JOIN songs ON queue.song_id = songs.id
+        WHERE queue.status = 'queued'
+        ORDER BY queue.id ASC
+        LIMIT 1
+        `,
+        (err, next) => {
+          if (!next) {
+            return res.json(null);
+          }
+
+          db.run("UPDATE queue SET status = 'playing' WHERE id = ?", [next.queueId], () => {
+            emitQueue();
+            res.json(next);
+          });
+        }
+      );
+    }
+  );
 });
 
 app.post("/api/admin/finish-current", (req, res) => {
@@ -104,14 +131,17 @@ app.post("/api/admin/finish-current", (req, res) => {
     return res.status(403).json({ error: "Nicht erlaubt" });
   }
 
-  db.run(`
+  db.run(
+    `
     UPDATE queue
     SET status = 'played', played_at = CURRENT_TIMESTAMP
     WHERE status = 'playing'
-  `, () => {
-    emitQueue();
-    res.json({ success: true });
-  });
+    `,
+    () => {
+      emitQueue();
+      res.json({ success: true });
+    }
+  );
 });
 
 app.post("/api/admin/skip", (req, res) => {
@@ -119,14 +149,17 @@ app.post("/api/admin/skip", (req, res) => {
     return res.status(403).json({ error: "Nicht erlaubt" });
   }
 
-  db.run(`
+  db.run(
+    `
     UPDATE queue
     SET status = 'skipped', played_at = CURRENT_TIMESTAMP
     WHERE status = 'playing'
-  `, () => {
-    emitQueue();
-    res.json({ success: true });
-  });
+    `,
+    () => {
+      emitQueue();
+      res.json({ success: true });
+    }
+  );
 });
 
 app.get("/api/admin/clear", (req, res) => {
@@ -134,42 +167,50 @@ app.get("/api/admin/clear", (req, res) => {
     return res.status(403).json({ error: "Nicht erlaubt" });
   }
 
-  db.run(`
+  db.run(
+    `
     UPDATE queue
     SET status = 'skipped'
     WHERE status IN ('queued', 'playing')
-  `, () => {
-    emitQueue();
-    res.json({ success: true });
-  });
+    `,
+    () => {
+      emitQueue();
+      res.json({ success: true });
+    }
+  );
 });
 
-io.on("connection", () => {
-  emitQueue();
-});
-
-app.post("/api/admin/add-song", (req, res) => {
-  if (req.query.key !== "demo123") {
+app.post("/api/admin/add-song", upload.single("file"), (req, res) => {
+  if (req.query.key !== ADMIN_KEY) {
     return res.status(403).json({ error: "Nicht erlaubt" });
   }
 
-  const { title, artist, filename } = req.body;
+  const { title, artist } = req.body;
+  const file = req.file;
 
-  if (!title || !artist || !filename) {
+  if (!title || !artist || !file) {
     return res.status(400).json({ error: "Fehlende Daten" });
   }
 
   db.run(
     "INSERT INTO songs (title, artist, filename) VALUES (?, ?, ?)",
-    [title, artist, filename],
+    [title, artist, file.filename],
     function (err) {
       if (err) {
         return res.status(500).json({ error: "DB Fehler" });
       }
 
-      res.json({ success: true, id: this.lastID });
+      res.json({
+        success: true,
+        id: this.lastID,
+        filename: file.filename
+      });
     }
   );
+});
+
+io.on("connection", () => {
+  emitQueue();
 });
 
 server.listen(3001, "0.0.0.0", () => {
