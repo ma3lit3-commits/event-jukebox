@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { io } from "socket.io-client";
 
-const API = `http://${window.location.hostname}:3001`;
+const API = "https://big-hounds-argue.loca.lt";
 const ADMIN_KEY = "demo123";
 
 export default function Admin() {
