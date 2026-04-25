@@ -1,27 +1,38 @@
 import { useEffect, useRef, useState } from "react";
 import { io } from "socket.io-client";
 
-const API = "https://big-hounds-argue.loca.lt";
+const API = `http://${window.location.hostname}:3001`;
 const ADMIN_KEY = "demo123";
 
 export default function Admin() {
   const [queue, setQueue] = useState([]);
+  const [songs, setSongs] = useState([]);
   const [current, setCurrent] = useState(null);
+
   const [title, setTitle] = useState("");
   const [artist, setArtist] = useState("");
-  const [filename, setFilename] = useState("");
-const [file, setFile] = useState(null);
+  const [file, setFile] = useState(null);
   const [message, setMessage] = useState("");
+
   const audioRef = useRef(null);
 
   useEffect(() => {
-    fetch(`${API}/api/queue`).then(res => res.json()).then(setQueue);
+    loadQueue();
+    loadSongs();
 
     const socket = io(API);
     socket.on("queue:update", setQueue);
 
     return () => socket.disconnect();
   }, []);
+
+  function loadQueue() {
+    fetch(`${API}/api/queue`).then(res => res.json()).then(setQueue);
+  }
+
+  function loadSongs() {
+    fetch(`${API}/api/songs`).then(res => res.json()).then(setSongs);
+  }
 
   async function startNext() {
     const res = await fetch(`${API}/api/admin/start-next?key=${ADMIN_KEY}`, {
@@ -66,37 +77,52 @@ const [file, setFile] = useState(null);
     await fetch(`${API}/api/admin/clear?key=${ADMIN_KEY}`);
   }
 
-async function addSong(e) {
-  e.preventDefault();
-  setMessage("");
+  async function addSong(e) {
+    e.preventDefault();
+    setMessage("");
 
-  if (!title || !artist || !file) {
-    setMessage("Bitte alles ausfüllen + Datei wählen.");
-    return;
+    if (!title || !artist || !file) {
+      setMessage("Bitte Titel, Artist und MP3-Datei auswählen.");
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append("title", title);
+    formData.append("artist", artist);
+    formData.append("file", file);
+
+    const res = await fetch(`${API}/api/admin/add-song?key=${ADMIN_KEY}`, {
+      method: "POST",
+      body: formData
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      setMessage(data.error || "Fehler beim Hochladen.");
+      return;
+    }
+
+    setTitle("");
+    setArtist("");
+    setFile(null);
+    setMessage("Song wurde hochgeladen und gespeichert.");
+    loadSongs();
   }
 
-  const formData = new FormData();
-  formData.append("title", title);
-  formData.append("artist", artist);
-  formData.append("file", file);
+  async function deleteSong(id) {
+    const confirmDelete = window.confirm("Song wirklich ausblenden?");
+    if (!confirmDelete) return;
 
-  const res = await fetch(`${API}/api/admin/add-song?key=${ADMIN_KEY}`, {
-    method: "POST",
-    body: formData
-  });
+    const res = await fetch(`${API}/api/admin/delete-song/${id}?key=${ADMIN_KEY}`, {
+      method: "POST"
+    });
 
-  const data = await res.json();
-
-  if (!res.ok) {
-    setMessage(data.error || "Fehler");
-    return;
+    if (res.ok) {
+      setSongs(prev => prev.filter(song => song.id !== id));
+    }
   }
 
-  setTitle("");
-  setArtist("");
-  setFile(null);
-  setMessage("Upload erfolgreich");
-}
   return (
     <main style={styles.page}>
       <section style={styles.header}>
@@ -143,24 +169,46 @@ async function addSong(e) {
               onChange={e => setArtist(e.target.value)}
             />
 
- <input
-  style={styles.input}
-  type="file"
-  accept="audio/mpeg"
-  onChange={(e) => setFile(e.target.files[0])}
-/>
+            <input
+              style={styles.input}
+              type="file"
+              accept="audio/mpeg,audio/mp3"
+              onChange={e => setFile(e.target.files[0])}
+            />
 
             <button style={styles.button} type="submit">
-              Song speichern
+              MP3 hochladen & Song speichern
             </button>
           </form>
 
           {message && <p style={styles.message}>{message}</p>}
-
-          <p style={styles.hint}>
-            MP3-Datei muss im Ordner <strong>client/public/songs</strong> liegen.
-          </p>
         </div>
+      </section>
+
+      <section style={styles.card}>
+        <div style={styles.queueHeader}>
+          <h2 style={styles.cardTitle}>Songs verwalten</h2>
+          <span style={styles.badge}>{songs.length}</span>
+        </div>
+
+        {songs.length === 0 && <p style={styles.empty}>Keine Songs vorhanden.</p>}
+
+        {songs.map(song => (
+          <div key={song.id} style={styles.songManageItem}>
+            <div>
+              <strong>{song.artist} – {song.title}</strong>
+              <br />
+              <span style={styles.fileName}>{song.filename}</span>
+            </div>
+
+            <button
+              style={styles.dangerButton}
+              onClick={() => deleteSong(song.id)}
+            >
+              löschen
+            </button>
+          </div>
+        ))}
       </section>
 
       <section style={styles.card}>
@@ -226,7 +274,8 @@ const styles = {
     border: "1px solid rgba(255,204,0,0.22)",
     borderRadius: 22,
     padding: 22,
-    boxShadow: "0 0 34px rgba(255,204,0,0.06)"
+    boxShadow: "0 0 34px rgba(255,204,0,0.06)",
+    marginBottom: 18
   },
   cardTitle: {
     color: "#fff",
@@ -309,10 +358,6 @@ const styles = {
     padding: 12,
     borderRadius: 14
   },
-  hint: {
-    color: "#aaa",
-    fontSize: 13
-  },
   queueHeader: {
     display: "flex",
     justifyContent: "space-between",
@@ -335,6 +380,14 @@ const styles = {
     padding: "13px 0",
     borderBottom: "1px solid rgba(255,255,255,0.08)"
   },
+  songManageItem: {
+    display: "grid",
+    gridTemplateColumns: "1fr auto",
+    gap: 12,
+    alignItems: "center",
+    padding: "13px 0",
+    borderBottom: "1px solid rgba(255,255,255,0.08)"
+  },
   queueNumber: {
     color: "#ffcc00",
     fontWeight: 1000
@@ -342,5 +395,9 @@ const styles = {
   status: {
     color: "#888",
     textAlign: "right"
+  },
+  fileName: {
+    color: "#888",
+    fontSize: 12
   }
 };

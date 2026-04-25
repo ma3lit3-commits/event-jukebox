@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { io } from "socket.io-client";
 
-const API = "https://big-hounds-argue.loca.lt";
+const API = `http://${window.location.hostname}:3001`;
 const BRAND = "EFFEKTE.CH PLAY";
 
 export default function App() {

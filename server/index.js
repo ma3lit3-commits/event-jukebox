@@ -77,10 +77,44 @@ app.post("/api/queue", (req, res) => {
     return res.status(400).json({ error: "songId fehlt" });
   }
 
-  db.run("INSERT INTO queue (song_id) VALUES (?)", [songId], () => {
-    emitQueue();
-    res.json({ success: true });
-  });
+  // Queue-Limit
+  db.get(
+    `
+    SELECT COUNT(*) as count
+    FROM queue
+    WHERE status IN ('queued','playing')
+    `,
+    (err, row) => {
+      if (row && row.count >= 20) {
+        return res.status(400).json({ error: "Die Warteschlange ist aktuell voll." });
+      }
+
+      // Duplicate-Check
+      db.get(
+        `
+        SELECT * FROM queue 
+        WHERE song_id = ? 
+        AND status IN ('queued','playing')
+        `,
+        [songId],
+        (err, existing) => {
+          if (existing) {
+            return res.status(400).json({ error: "Song ist bereits in der Warteschlange" });
+          }
+
+          // Insert
+          db.run(
+            "INSERT INTO queue (song_id) VALUES (?)",
+            [songId],
+            () => {
+              emitQueue();
+              res.json({ success: true });
+            }
+          );
+        }
+      );
+    }
+  );
 });
 
 app.post("/api/admin/start-next", (req, res) => {
@@ -205,6 +239,26 @@ app.post("/api/admin/add-song", upload.single("file"), (req, res) => {
         id: this.lastID,
         filename: file.filename
       });
+    }
+  );
+});
+
+app.post("/api/admin/delete-song/:id", (req, res) => {
+  if (req.query.key !== ADMIN_KEY) {
+    return res.status(403).json({ error: "Nicht erlaubt" });
+  }
+
+  const songId = req.params.id;
+
+  db.run(
+    "UPDATE songs SET active = 0 WHERE id = ?",
+    [songId],
+    function (err) {
+      if (err) {
+        return res.status(500).json({ error: "DB Fehler" });
+      }
+
+      res.json({ success: true });
     }
   );
 });
