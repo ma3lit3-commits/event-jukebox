@@ -23,7 +23,8 @@ const defaultSettings = {
   queueLimit: 20,
   cooldownSeconds: 30,
   eventName: "EFFEKTE.CH PLAY",
-  claim: "IT’S YOUR SHOW."
+  claim: "IT’S YOUR SHOW.",
+  requestsOpen: true
 };
 
 function getSettings() {
@@ -90,15 +91,20 @@ app.post("/api/admin/settings", (req, res) => {
 
   const current = getSettings();
 
-  const next = {
-    queueLimit: Number(req.body.queueLimit || current.queueLimit),
-    cooldownSeconds: Number(req.body.cooldownSeconds || current.cooldownSeconds),
-    eventName: req.body.eventName || current.eventName,
-    claim: req.body.claim || current.claim
-  };
+const next = {
+  queueLimit: Number(req.body.queueLimit || current.queueLimit),
+  cooldownSeconds: Number(req.body.cooldownSeconds || current.cooldownSeconds),
+  eventName: req.body.eventName || current.eventName,
+  claim: req.body.claim || current.claim,
+  requestsOpen:
+    typeof req.body.requestsOpen === "boolean"
+      ? req.body.requestsOpen
+      : current.requestsOpen
+};
 
-  saveSettings(next);
-  res.json({ success: true, settings: next });
+saveSettings(next);
+io.emit("settings:update", next);
+res.json({ success: true, settings: next });
 });
 
 app.get("/api/songs", (req, res) => {
@@ -125,6 +131,9 @@ app.get("/api/queue", (req, res) => {
 app.post("/api/queue", (req, res) => {
   const { songId } = req.body;
   const settings = getSettings();
+  if (!settings.requestsOpen) {
+    return res.status(400).json({ error: "Musikwünsche sind aktuell geschlossen." });
+  }
   const userKey = req.ip;
   const now = Date.now();
 
@@ -335,6 +344,33 @@ app.post("/api/admin/delete-song/:id", (req, res) => {
       res.json({ success: true });
     }
   );
+});
+
+app.post("/api/admin/emergency", (req, res) => {
+  if (req.query.key !== ADMIN_KEY) {
+    return res.status(403).json({ error: "Nicht erlaubt" });
+  }
+
+  // Queue komplett leeren
+  db.run("DELETE FROM queue");
+
+  // Aktuelle Settings laden & Requests schliessen
+  const current = getSettings();
+
+  const next = {
+    ...current,
+    requestsOpen: false
+  };
+
+  saveSettings(next);
+
+  // 🔥 ALLE Clients sofort updaten
+  io.emit("queue:update", []);
+  io.emit("settings:update", next);
+  io.emit("emergency");
+
+  res.json({ success: true });
+});
 });
 
 io.on("connection", () => {

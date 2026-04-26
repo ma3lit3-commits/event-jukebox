@@ -1,0 +1,7 @@
+{
+  "queueLimit": 20,
+  "cooldownSeconds": 25,
+  "eventName": "EFFEKTE.CH PLAY",
+  "claim": "IT’S YOUR SHOW.",
+  "requestsOpen": true
+}

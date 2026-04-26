@@ -7,15 +7,18 @@ const BRAND = "EFFEKTE.CH PLAY";
 export default function App() {
   const [songs, setSongs] = useState([]);
   const [queue, setQueue] = useState([]);
+const [settings, setSettings] = useState({});
   const [search, setSearch] = useState("");
   const [message, setMessage] = useState("");
 
   useEffect(() => {
     fetch(`${API}/api/songs`).then(res => res.json()).then(setSongs);
     fetch(`${API}/api/queue`).then(res => res.json()).then(setQueue);
+fetch(`${API}/api/settings`).then(res => res.json()).then(setSettings);
 
     const socket = io(API);
     socket.on("queue:update", setQueue);
+socket.on("settings:update", setSettings);
 
     return () => socket.disconnect();
   }, []);
@@ -25,6 +28,11 @@ export default function App() {
 
     const lastAdd = localStorage.getItem("lastAdd");
     const now = Date.now();
+
+if (settings.requestsOpen === false) {
+  setMessage("Musikwünsche sind aktuell geschlossen.");
+  return;
+}
 
     if (lastAdd && now - lastAdd < 10000) {
       setMessage("Bitte kurz warten, bevor du erneut einen Song hinzufügst.");
@@ -111,7 +119,13 @@ export default function App() {
 
           {message && <p style={styles.message}>{message}</p>}
 
-          <section style={styles.panel}>
+{settings.requestsOpen === false && (
+  <div style={styles.closedBox}>
+    Musikwünsche sind aktuell geschlossen.
+  </div>
+)}
+         
+ <section style={styles.panel}>
             <h3 style={styles.panelTitle}>SONGS</h3>
 
             {filteredSongs.map(song => (
@@ -411,5 +425,15 @@ const styles = {
     marginTop: 28,
     position: "relative",
     zIndex: 1
-  }
+  },
+closedBox: {
+  background: "#2a0808",
+  border: "1px solid #6b1b1b",
+  color: "#fff",
+  borderRadius: 16,
+  padding: 16,
+  margin: "18px 0",
+  fontWeight: 900,
+  textAlign: "center"
+}
 };

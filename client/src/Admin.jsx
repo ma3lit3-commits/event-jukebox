@@ -3,10 +3,15 @@ import { io } from "socket.io-client";
 
 const API = `http://${window.location.hostname}:3001`;
 const ADMIN_KEY = "demo123";
+const ADMIN_PIN = "1234";
 
 export default function Admin() {
+  const [authorized, setAuthorized] = useState(false);
+  const [pin, setPin] = useState("");
+
   const [queue, setQueue] = useState([]);
   const [songs, setSongs] = useState([]);
+  const [settings, setSettings] = useState({});
   const [current, setCurrent] = useState(null);
 
   const [title, setTitle] = useState("");
@@ -17,14 +22,18 @@ export default function Admin() {
   const audioRef = useRef(null);
 
   useEffect(() => {
+    if (!authorized) return;
+
     loadQueue();
     loadSongs();
+    loadSettings();
 
     const socket = io(API);
     socket.on("queue:update", setQueue);
+    socket.on("settings:update", setSettings);
 
     return () => socket.disconnect();
-  }, []);
+  }, [authorized]);
 
   function loadQueue() {
     fetch(`${API}/api/queue`).then(res => res.json()).then(setQueue);
@@ -32,6 +41,14 @@ export default function Admin() {
 
   function loadSongs() {
     fetch(`${API}/api/songs`).then(res => res.json()).then(setSongs);
+  }
+
+  function loadSettings() {
+    fetch(`${API}/api/settings`).then(res => res.json()).then(setSettings);
+  }
+
+  function handleLogin() {
+    if (pin === ADMIN_PIN) setAuthorized(true);
   }
 
   async function startNext() {
@@ -77,6 +94,46 @@ export default function Admin() {
     await fetch(`${API}/api/admin/clear?key=${ADMIN_KEY}`);
   }
 
+  async function emergency() {
+    audioRef.current.pause();
+    setCurrent(null);
+
+    await fetch(`${API}/api/admin/emergency?key=${ADMIN_KEY}`, {
+      method: "POST"
+    });
+
+    loadSettings();
+    loadQueue();
+  }
+
+  async function toggleRequests() {
+    await fetch(`${API}/api/admin/settings?key=${ADMIN_KEY}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ...settings,
+        requestsOpen: !settings.requestsOpen
+      })
+    });
+
+    loadSettings();
+  }
+
+async function saveEventSettings() {
+  const res = await fetch(`${API}/api/admin/settings?key=${ADMIN_KEY}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(settings)
+  });
+
+  const data = await res.json();
+
+  if (data.settings) {
+    setSettings(data.settings);
+    setMessage("Einstellungen gespeichert.");
+  }
+}
+
   async function addSong(e) {
     e.preventDefault();
     setMessage("");
@@ -96,10 +153,8 @@ export default function Admin() {
       body: formData
     });
 
-    const data = await res.json();
-
     if (!res.ok) {
-      setMessage(data.error || "Fehler beim Hochladen.");
+      setMessage("Fehler beim Hochladen.");
       return;
     }
 
@@ -111,8 +166,7 @@ export default function Admin() {
   }
 
   async function deleteSong(id) {
-    const confirmDelete = window.confirm("Song wirklich ausblenden?");
-    if (!confirmDelete) return;
+    if (!window.confirm("Song wirklich ausblenden?")) return;
 
     const res = await fetch(`${API}/api/admin/delete-song/${id}?key=${ADMIN_KEY}`, {
       method: "POST"
@@ -123,11 +177,36 @@ export default function Admin() {
     }
   }
 
+  if (!authorized) {
+    return (
+      <main style={styles.page}>
+        <section style={styles.loginCard}>
+          <p style={styles.kicker}>CONTROL PANEL</p>
+          <h1 style={styles.title}>EFFEKTE.CH PLAY</h1>
+          <p style={styles.subtitle}>Admin Login</p>
+
+          <input
+            style={styles.input}
+            type="password"
+            placeholder="PIN"
+            value={pin}
+            onChange={e => setPin(e.target.value)}
+            onKeyDown={e => e.key === "Enter" && handleLogin()}
+          />
+
+          <button style={styles.button} onClick={handleLogin}>
+            Login
+          </button>
+        </section>
+      </main>
+    );
+  }
+
   return (
     <main style={styles.page}>
       <section style={styles.header}>
         <p style={styles.kicker}>CONTROL PANEL</p>
-        <h1 style={styles.title}>EFFEKTE.CH PLAY</h1>
+        <h1 style={styles.title}>{settings.eventName || "EFFEKTE.CH PLAY"}</h1>
         <p style={styles.subtitle}>Admin für Playback, Queue und Songdatenbank</p>
       </section>
 
@@ -147,42 +226,93 @@ export default function Admin() {
           <div style={styles.row}>
             <button style={styles.button} onClick={startNext}>Start Playback</button>
             <button style={styles.buttonSecondary} onClick={skip}>Skip</button>
-            <button style={styles.dangerButton} onClick={clearQueue}>Queue leeren</button>
+            <button style={styles.buttonSecondary} onClick={clearQueue}>Queue leeren</button>
+            <button style={styles.dangerButton} onClick={emergency}>Emergency</button>
           </div>
         </div>
 
         <div style={styles.card}>
-          <h2 style={styles.cardTitle}>Song hinzufügen</h2>
+          <h2 style={styles.cardTitle}>Event Control</h2>
 
-          <form onSubmit={addSong} style={styles.form}>
-            <input
-              style={styles.input}
-              placeholder="Titel"
-              value={title}
-              onChange={e => setTitle(e.target.value)}
-            />
+          <div style={styles.statusBox}>
+            <span style={styles.label}>Requests</span>
+            <strong style={settings.requestsOpen ? styles.openText : styles.closedText}>
+              {settings.requestsOpen ? "OFFEN" : "GESCHLOSSEN"}
+            </strong>
+          </div>
 
-            <input
-              style={styles.input}
-              placeholder="Artist"
-              value={artist}
-              onChange={e => setArtist(e.target.value)}
-            />
+          <button
+            style={settings.requestsOpen ? styles.dangerButton : styles.button}
+            onClick={toggleRequests}
+          >
+            {settings.requestsOpen ? "Requests schließen" : "Requests öffnen"}
+          </button>
 
-            <input
-              style={styles.input}
-              type="file"
-              accept="audio/mpeg,audio/mp3"
-              onChange={e => setFile(e.target.files[0])}
-            />
+<div style={styles.settingsGrid}>
+  <label style={styles.miniLabel}>Queue Limit</label>
+  <input
+    style={styles.input}
+    type="number"
+    value={settings.queueLimit || 20}
+    onChange={e =>
+      setSettings(prev => ({
+        ...prev,
+        queueLimit: Number(e.target.value)
+      }))
+    }
+  />
 
-            <button style={styles.button} type="submit">
-              MP3 hochladen & Song speichern
-            </button>
-          </form>
+  <label style={styles.miniLabel}>Cooldown in Sekunden</label>
+  <input
+    style={styles.input}
+    type="number"
+    value={settings.cooldownSeconds || 30}
+    onChange={e =>
+      setSettings(prev => ({
+        ...prev,
+        cooldownSeconds: Number(e.target.value)
+      }))
+    }
+  />
 
-          {message && <p style={styles.message}>{message}</p>}
+  <button style={styles.button} onClick={saveEventSettings}>
+    Einstellungen speichern
+  </button>
+</div>
         </div>
+      </section>
+
+      <section style={styles.card}>
+        <h2 style={styles.cardTitle}>Song hinzufügen</h2>
+
+        <form onSubmit={addSong} style={styles.form}>
+          <input
+            style={styles.input}
+            placeholder="Titel"
+            value={title}
+            onChange={e => setTitle(e.target.value)}
+          />
+
+          <input
+            style={styles.input}
+            placeholder="Artist"
+            value={artist}
+            onChange={e => setArtist(e.target.value)}
+          />
+
+          <input
+            style={styles.input}
+            type="file"
+            accept="audio/mpeg,audio/mp3"
+            onChange={e => setFile(e.target.files[0])}
+          />
+
+          <button style={styles.button} type="submit">
+            MP3 hochladen & Song speichern
+          </button>
+        </form>
+
+        {message && <p style={styles.message}>{message}</p>}
       </section>
 
       <section style={styles.card}>
@@ -244,6 +374,15 @@ const styles = {
   header: {
     marginBottom: 26
   },
+  loginCard: {
+    maxWidth: 520,
+    margin: "90px auto",
+    background: "rgba(14,14,14,0.95)",
+    border: "1px solid rgba(255,204,0,0.22)",
+    borderRadius: 22,
+    padding: 28,
+    boxShadow: "0 0 34px rgba(255,204,0,0.08)"
+  },
   kicker: {
     color: "#ffcc00",
     letterSpacing: 4,
@@ -261,7 +400,8 @@ const styles = {
   },
   subtitle: {
     color: "#ccc",
-    margin: 0
+    margin: 0,
+    marginBottom: 18
   },
   grid: {
     display: "grid",
@@ -294,6 +434,13 @@ const styles = {
     padding: 16,
     marginBottom: 16
   },
+  statusBox: {
+    background: "#050505",
+    border: "1px solid rgba(255,204,0,0.35)",
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 16
+  },
   label: {
     display: "block",
     fontSize: 11,
@@ -303,6 +450,14 @@ const styles = {
     marginBottom: 6
   },
   nowText: {
+    fontSize: 20
+  },
+  openText: {
+    color: "#00e676",
+    fontSize: 20
+  },
+  closedText: {
+    color: "#ff4444",
     fontSize: 20
   },
   row: {
@@ -358,6 +513,10 @@ const styles = {
     padding: 12,
     borderRadius: 14
   },
+  hint: {
+    color: "#aaa",
+    fontSize: 13
+  },
   queueHeader: {
     display: "flex",
     justifyContent: "space-between",
@@ -399,5 +558,17 @@ const styles = {
   fileName: {
     color: "#888",
     fontSize: 12
-  }
+  },
+settingsGrid: {
+  display: "grid",
+  gap: 10,
+  marginTop: 16
+},
+miniLabel: {
+  color: "#aaa",
+  fontSize: 12,
+  fontWeight: 900,
+  letterSpacing: 1,
+  textTransform: "uppercase"
+}
 };
