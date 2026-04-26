@@ -408,18 +408,19 @@ const styles = {
     paddingTop: 24
   },
 
-  loginCard: {
-    width: "100%",
-    maxWidth: 520,
-    margin: "80px auto",
-    background: "rgba(14,14,14,0.95)",
-    border: "1px solid rgba(255,204,0,0.22)",
-    borderRadius: 28,
-    padding: 24,
-    boxSizing: "border-box",
-    textAlign: "center",
-    boxShadow: "0 0 38px rgba(255,204,0,0.08)"
-  },
+loginCard: {
+  width: "100%",
+  maxWidth: 520,
+  margin: "80px auto",
+  background: "rgba(14,14,14,0.95)",
+  border: "1px solid rgba(255,204,0,0.22)",
+  borderRadius: 28,
+  padding: "28px 22px",
+  boxSizing: "border-box",
+  textAlign: "center",
+  boxShadow: "0 0 38px rgba(255,204,0,0.08)",
+  overflow: "hidden"
+},
 
   kicker: {
     color: "#ffcc00",
@@ -429,15 +430,18 @@ const styles = {
     margin: 0
   },
 
-  logo: {
-    color: "#ffcc00",
-    fontSize: "clamp(46px, 15vw, 76px)",
-    lineHeight: 0.82,
-    fontStyle: "italic",
-    fontWeight: 1000,
-    margin: "14px 0",
-    textShadow: "0 0 30px rgba(255,204,0,0.36)"
-  },
+logo: {
+  color: "#ffcc00",
+  fontSize: "clamp(38px, 12vw, 64px)",
+  lineHeight: 0.86,
+  fontStyle: "italic",
+  fontWeight: 1000,
+  margin: "14px auto",
+  textShadow: "0 0 30px rgba(255,204,0,0.36)",
+  maxWidth: "100%",
+  textAlign: "center",
+  wordBreak: "normal"
+},
 
   subtitle: {
     color: "#ccc",
