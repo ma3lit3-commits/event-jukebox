@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { io } from "socket.io-client";
 
-const API = `http://${window.location.hostname}:3001`;
+const API = "https://event-jukebox-backend.onrender.com";
 const BRAND = "EFFEKTE.CH PLAY";
 
 export default function App() {
