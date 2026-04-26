@@ -376,6 +376,8 @@ io.on("connection", () => {
   emitQueue();
 });
 
-server.listen(3001, "0.0.0.0", () => {
-  console.log("Server läuft auf http://localhost:3001");
+const PORT = process.env.PORT || 3001;
+
+server.listen(PORT, "0.0.0.0", () => {
+  console.log(`Server läuft auf Port ${PORT}`);
 });
