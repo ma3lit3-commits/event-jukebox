@@ -371,7 +371,6 @@ app.post("/api/admin/emergency", (req, res) => {
 
   res.json({ success: true });
 });
-});
 
 io.on("connection", () => {
   emitQueue();
