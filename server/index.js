@@ -1,3 +1,4 @@
+const fetch = require("node-fetch");
 const express = require("express");
 const http = require("http");
 const cors = require("cors");
@@ -6,6 +7,39 @@ const fs = require("fs");
 const multer = require("multer");
 const { Server } = require("socket.io");
 const db = require("./db");
+
+let spotifyToken = null;
+let spotifyTokenExpiresAt = 0;
+
+async function getSpotifyToken() {
+  if (spotifyToken && Date.now() < spotifyTokenExpiresAt) {
+    return spotifyToken;
+  }
+
+  const auth = Buffer.from(
+    ⁠ ${process.env.SPOTIFY_CLIENT_ID}:${process.env.SPOTIFY_CLIENT_SECRET} ⁠
+  ).toString("base64");
+
+  const res = await fetch("https://accounts.spotify.com/api/token", {
+    method: "POST",
+    headers: {
+      Authorization: ⁠ Basic ${auth} ⁠,
+      "Content-Type": "application/x-www-form-urlencoded"
+    },
+    body: "grant_type=client_credentials"
+  });
+
+  const data = await res.json();
+
+  if (!res.ok) {
+    throw new Error(data.error_description || "Spotify Token Fehler");
+  }
+
+  spotifyToken = data.access_token;
+  spotifyTokenExpiresAt = Date.now() + data.expires_in * 1000 - 60000;
+
+  return spotifyToken;
+}
 
 const ADMIN_KEY = "demo123";
 
@@ -377,6 +411,42 @@ io.on("connection", () => {
 });
 
 const PORT = process.env.PORT || 3001;
+
+app.get("/api/spotify/search", async (req, res) => {
+  try {
+    const q = req.query.q;
+
+    if (!q || q.trim().length < 2) {
+      return res.json([]);
+    }
+
+    const token = await getSpotifyToken();
+
+    const spotifyRes = await fetch(
+      `https://api.spotify.com/v1/search?type=track&limit=12&q=${encodeURIComponent(q)}`,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      }
+    );
+
+    const data = await spotifyRes.json();
+
+    const tracks = data.tracks.items.map(track => ({
+      spotifyId: track.id,
+      title: track.name,
+      artist: track.artists.map(a => a.name).join(", "),
+      image: track.album.images?.[1]?.url || null,
+      previewUrl: track.preview_url,
+      source: "spotify"
+    }));
+
+    res.json(tracks);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 server.listen(PORT, "0.0.0.0", () => {
   console.log(`Server läuft auf Port ${PORT}`);
