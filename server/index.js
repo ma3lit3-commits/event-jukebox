@@ -16,9 +16,9 @@ async function getSpotifyToken() {
     return spotifyToken;
   }
 
-  const auth = Buffer.from(
-    ⁠ ${process.env.SPOTIFY_CLIENT_ID}:${process.env.SPOTIFY_CLIENT_SECRET} ⁠
-  ).toString("base64");
+const auth = Buffer.from(
+  `${process.env.SPOTIFY_CLIENT_ID}:${process.env.SPOTIFY_CLIENT_SECRET}`
+).toString("base64");
 
   const res = await fetch("https://accounts.spotify.com/api/token", {
     method: "POST",
