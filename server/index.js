@@ -214,16 +214,16 @@ app.get("/api/spotify/search", async (req, res) => {
 
     const token = await getSpotifyToken();
 
-    const spotifyRes = await fetch(
-`https://api.spotify.com/v1/search?q=${encodeURIComponent(q)}&type=track&limit=12`
-      {
-        headers: {
-          Authorization: `Bearer ${token}`
-        }
-      }
-    );
-
-    const data = await spotifyRes.json();
+const spotifyRes = await fetch(
+  `https://api.spotify.com/v1/search?q=${encodeURIComponent(q)}&type=track&limit=12`,
+  {
+    headers: {
+      Authorization: `Bearer ${token}`
+    }
+  }
+);
+  
+  const data = await spotifyRes.json();
 
     if (!spotifyRes.ok) {
       return res.status(500).json({
